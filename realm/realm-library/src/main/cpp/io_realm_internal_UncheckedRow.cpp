@@ -16,8 +16,10 @@
 
 #include "io_realm_internal_UncheckedRow.h"
 #include "util.hpp"
+#include "java_accessor.hpp"
 
 using namespace realm;
+using namespace realm::_impl;
 
 static void finalize_unchecked_row(jlong ptr);
 
@@ -295,6 +297,8 @@ JNIEXPORT void JNICALL Java_io_realm_internal_UncheckedRow_nativeSetString(JNIEn
     CATCH_STD()
 }
 
+
+
 JNIEXPORT void JNICALL Java_io_realm_internal_UncheckedRow_nativeSetByteArray(JNIEnv* env, jobject,
                                                                               jlong nativeRowPtr, jlong columnIndex,
                                                                               jbyteArray value)
@@ -305,30 +309,17 @@ JNIEXPORT void JNICALL Java_io_realm_internal_UncheckedRow_nativeSetByteArray(JN
         return;
     }
 
-    jbyte* bytePtr = nullptr;
     try {
-        if (value == nullptr) {
-            if (!(ROW(nativeRowPtr)->get_table()->is_nullable(S(columnIndex)))) {
-                ThrowNullValueException(env, ROW(nativeRowPtr)->get_table(), S(columnIndex));
-                return;
-            }
-            ROW(nativeRowPtr)->set_binary(S(columnIndex), BinaryData());
+        auto& row = *reinterpret_cast<realm::Row*>(nativeRowPtr);
+        if (value == nullptr && !(row.get_table()->is_nullable(S(columnIndex)))) {
+            ThrowNullValueException(env, ROW(nativeRowPtr)->get_table(), S(columnIndex));
+            return;
         }
-        else {
-            bytePtr = env->GetByteArrayElements(value, NULL);
-            if (!bytePtr) {
-                ThrowException(env, IllegalArgument, "doByteArray");
-                return;
-            }
-            size_t dataLen = S(env->GetArrayLength(value));
-            ROW(nativeRowPtr)->set_binary(S(columnIndex), BinaryData(reinterpret_cast<char*>(bytePtr), dataLen));
-        }
+
+        JByteArrayAccessor jarray_accessor(env, value);
+        row.set_binary(static_cast<size_t>(columnIndex), jarray_accessor.transform<BinaryData>());
     }
     CATCH_STD()
-
-    if (bytePtr) {
-        env->ReleaseByteArrayElements(value, bytePtr, JNI_ABORT);
-    }
 }
 
 JNIEXPORT void JNICALL Java_io_realm_internal_UncheckedRow_nativeSetLink(JNIEnv* env, jobject, jlong nativeRowPtr,
